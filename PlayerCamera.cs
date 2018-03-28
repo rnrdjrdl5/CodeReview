@@ -4,6 +4,14 @@ using UnityEngine;
 
 public class PlayerCamera : MonoBehaviour {
 
+
+    // 플레이어 지면과 닿을 때 지면까지의 최소 거리
+
+    // 1. 카메라 레이캐스트를 쓰기 위해서
+    private PointToLocation PTL;
+
+
+
     // 카메라 뷰의 설정.
     public enum EnumCameraMode { FOLLOW , FREE };
 
@@ -43,26 +51,25 @@ public class PlayerCamera : MonoBehaviour {
     
 
     // 카메라와 플레이어가 떨어져 있는 거리
-    private float CameraDistanceTriangle = 2.4f;
+    public float CameraDistanceTriangle = 3.5f;
 
     // 최대 , 최소 떨어지는 거리
     public float MinCameraDistanceTriangle = 3.0f;
     public float MaxCameraDistanceTriangle = 10.0f;
 
-    // 카메라 휠의 이동속도
-    public float CameraWheelSpeed = 30000.0f;
 
     // 카메라가 땅에서 떨어져 있는 최소 거리
     public float CameraHeightFromFloor = 1.0f;
 
 
     // 카메라 위아래 회전 속도
-    public float CameraUpDownSpeed = 50.0f;
+    public float CameraUpDownSpeed = 15.0f;
 
 
     /********* 추가 x회전 ***********/
 
     // 좌우 회전 속도
+    // 일반 follow에서는 플레이어의 회전에 영향
     public float CameraRightLeftSpeed = 50.0f;
 
     // 카메라의 좌우 각도
@@ -71,12 +78,17 @@ public class PlayerCamera : MonoBehaviour {
     public float GetCameraRadX() { return CameraRadX; }
     public void SetCameraRadX(float SCR) { CameraRadX = SCR; }
 
+    // 자연스럽게 흘러가는 시간.
+    public float NaturePlayeCameraRotation;
     // Use this for initialization
 
     private void Awake()
     {
         // 기본 설정.
         CameraModeType = EnumCameraMode.FOLLOW;
+        PTL = new PointToLocation();
+        PTL.SetPlayerCamera(gameObject);
+        PTL.SetcameraScript(this);
     }
 
     void Start () {
@@ -89,13 +101,15 @@ public class PlayerCamera : MonoBehaviour {
     // 입력을 받아 카메라의 각도를 설정하는 함수.
     void SetCameraRad()
     {
+        // 마우스 y축입력을 받습니다.
         CameraRad += -(Input.GetAxis("Mouse Y")) * Time.deltaTime * CameraUpDownSpeed;
 
+        // 마우스 y축 입력에 제한을 둡니다.
         if (CameraRad > MaxCameraRad) CameraRad = MaxCameraRad;
         else if (CameraRad < MinCameraRad) CameraRad = MinCameraRad;
 
 
-
+        // 상호작용 도중에는 마우스의 x축 회전도 받습니다.
         if (CameraModeType == EnumCameraMode.FREE)
         {
             CameraRadX += -(Input.GetAxis("Mouse X")) * Time.deltaTime * CameraRightLeftSpeed;
@@ -113,9 +127,13 @@ public class PlayerCamera : MonoBehaviour {
 
     private void LateUpdate()
     {
+        // 1. 초기 카메라 위치를 잡습니다.
         // 플레이어 생성 시
         if (isPlayerSpawn)
         {
+
+            
+
             // 카메라 상태에 따라 카메라를 이동시킨다.
             if (CameraModeType == PlayerCamera.EnumCameraMode.FOLLOW)
             {
@@ -129,6 +147,10 @@ public class PlayerCamera : MonoBehaviour {
             }
         }
 
+        
+
+
+
     }
 
 
@@ -137,40 +159,47 @@ public class PlayerCamera : MonoBehaviour {
     {
         if (isPlayerSpawn)
         {
-            // 휠에 따라서 카메라의 거리를 조절함.
-            CameraDistanceTriangle = CameraDistanceTriangle - Time.deltaTime * Input.GetAxis("Mouse ScrollWheel") * CameraWheelSpeed;
-
-            // 최대 거리 , 최소거리 유지
-            if (CameraDistanceTriangle < MinCameraDistanceTriangle) CameraDistanceTriangle = MinCameraDistanceTriangle;
-            else if (CameraDistanceTriangle > MaxCameraDistanceTriangle) CameraDistanceTriangle = MaxCameraDistanceTriangle;
-
-            // 카메라의 x와 y 위치를 구함.
+            
+            // 카메라의 각도를 비례해서 z위치와 y위치를 계산
             float CameraPlayerDistanceX = Mathf.Cos(Mathf.Deg2Rad * CameraRad) * CameraDistanceTriangle;
             float CameraPlayerDistanceY = Mathf.Sin(Mathf.Deg2Rad * CameraRad) * CameraDistanceTriangle;
 
-            // 플레이어의 y축 회전을 받아옴.
-             // 보간값을 맞춰서 조절할 예정
-            float LerpAngle = Mathf.LerpAngle(transform.eulerAngles.y, PlayerObject.transform.eulerAngles.y, 1.0f);
+            // 보간 사용, 카메라 x,z 위치를 보간으로 서서히 조절
+            float LerpAngle = Mathf.LerpAngle(transform.eulerAngles.y, PlayerObject.transform.eulerAngles.y, NaturePlayeCameraRotation * Time.deltaTime);
 
-            
+            //Quaternion 형태로 전환
             Quaternion QuatTypeLerpAngle = Quaternion.Euler(0, LerpAngle, 0);
 
-            // 카메라의 위치를 구한 x축 , y축과 y축회전을 이용해서 위치를 선정함.
+            // 보간으로 구한 값과
+            // 카메라 각도로 구한 값으로
+            // 카메라의 위치를 결정함.
             transform.position = PlayerObject.transform.position - (QuatTypeLerpAngle * Vector3.forward * CameraPlayerDistanceX) + (Vector3.up * CameraPlayerDistanceY);
             
+
             // 카메라가 Player를 보도록 함
             transform.LookAt(PlayerObject.transform);
 
-            // 카메라가 기본적으로 가지고 있어야 할 y축 높이를 더해줌
-            transform.position = new Vector3(transform.position.x, transform.position.y + CameraHeightFromFloor, transform.position.z);
+            // 카메라 위치에서 y값을 추가로 더함
+                transform.position = new Vector3(transform.position.x, transform.position.y + CameraHeightFromFloor, transform.position.z);
+
+            // 오브젝트에 카메라 시야가 가려지면 카메라 위치 재조정
+            transform.position = PTL.FindWall(PlayerObject);
+
+
+            /*
+            if(PTL.GetisFindWall()==true)
+            {
+                transform.LookAt(PlayerObject.transform.position + Vector3.up);
+            }*/
+
+
+
         }
     }
 
     // 플레이어를 따라가나, 시점은 마음대로 변경이 가능합니다.
     void FreeCamera()
     {
-        // 휠에 따라서 카메라의 거리를 조절함.
-        CameraDistanceTriangle = CameraDistanceTriangle - Time.deltaTime * Input.GetAxis("Mouse ScrollWheel") * CameraWheelSpeed;
 
         // 최대 거리 , 최소거리 유지
         if (CameraDistanceTriangle < MinCameraDistanceTriangle) CameraDistanceTriangle = MinCameraDistanceTriangle;
